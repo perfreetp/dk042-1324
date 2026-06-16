@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, Activity, Target, AlertTriangle, FileCheck, Layout } from 'lucide-react';
+import { ChevronDown, Activity, Target, AlertTriangle, FileCheck, Layout, BookOpen } from 'lucide-react';
 import { usePortfolioStore } from '../store/usePortfolioStore';
 import { majorsData } from '../data/majors';
 import { useDiagnosis } from '../hooks/useDiagnosis';
@@ -20,7 +20,7 @@ export default function DiagnosePage() {
   const { diagnosisResult, isDiagnosing, runFullDiagnosis, priorityGaps, canDiagnose } = useDiagnosis();
 
   const [showMajorDropdown, setShowMajorDropdown] = useState(false);
-  const [activeTab, setActiveTab] = useState<'ability' | 'material' | 'structure'>('ability');
+  const [activeTab, setActiveTab] = useState<'ability' | 'material' | 'structure' | 'narrative'>('ability');
 
   const handleSelectMajor = (major: TargetMajor) => {
     setTargetMajor(major);
@@ -31,6 +31,7 @@ export default function DiagnosePage() {
     { key: 'ability', label: '能力缺口', icon: AlertTriangle },
     { key: 'material', label: '素材检查', icon: FileCheck },
     { key: 'structure', label: '结构预览', icon: Layout },
+    { key: 'narrative', label: '叙事评估', icon: BookOpen },
   ] as const;
 
   return (
@@ -239,6 +240,48 @@ export default function DiagnosePage() {
                   <MaterialCheckList checks={diagnosisResult.materialChecks} />
                 )}
                 {activeTab === 'structure' && <StructurePreview projects={projects} />}
+                {activeTab === 'narrative' && diagnosisResult && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center ${getScoreBgColor(diagnosisResult.narrativeEvaluation.score)}`}>
+                        <span className={`text-2xl font-bold ${getScoreColor(diagnosisResult.narrativeEvaluation.score)}`}>
+                          {diagnosisResult.narrativeEvaluation.score}
+                        </span>
+                      </div>
+                      <div>
+                        <p className={`text-lg font-semibold ${getScoreColor(diagnosisResult.narrativeEvaluation.score)}`}>
+                          {getScoreLabel(diagnosisResult.narrativeEvaluation.score)}
+                        </p>
+                        <p className="text-sm text-stone-500">叙事连贯性评分</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {diagnosisResult.narrativeEvaluation.feedback.map((item, i) => {
+                        const isPositive = item.includes('清晰') || item.includes('充分') || item.includes('完整') || item.includes('结合') || item.includes('展现') || item.includes('提及');
+                        const isWarning = item.includes('建议') || item.includes('不足') || item.includes('简短') || item.includes('未提及') || item.includes('缺乏') || item.includes('尚未');
+                        return (
+                          <div
+                            key={i}
+                            className={`flex items-start gap-2 p-3 rounded ${
+                              isPositive
+                                ? 'bg-emerald-50 border border-emerald-100'
+                                : isWarning
+                                ? 'bg-amber-50 border border-amber-100'
+                                : 'bg-stone-50 border border-stone-100'
+                            }`}
+                          >
+                            <span className={`mt-0.5 text-sm ${isPositive ? 'text-emerald-600' : isWarning ? 'text-amber-600' : 'text-stone-500'}`}>
+                              {isPositive ? '✓' : isWarning ? '!' : '•'}
+                            </span>
+                            <p className={`text-sm ${isPositive ? 'text-emerald-700' : isWarning ? 'text-amber-700' : 'text-stone-600'}`}>
+                              {item}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -25,6 +25,7 @@ export default function ExportPage() {
     background: store.background,
     targetMajor: store.targetMajor,
     versions: store.versions,
+    narrativeDraft: store.narrativeDraft,
   };
 
   const handleExportPDF = async () => {
@@ -161,15 +162,17 @@ export default function ExportPage() {
           </Card.Header>
           <Card.Content>
             <p className="text-sm text-stone-600 mb-4">
-              导出包含能力分析、素材检查、项目列表、提交清单等内容的完整诊断报告，方便打印和存档。
+              {diagnosisResult
+                ? '导出包含综合评分、能力分析、素材检查、项目列表、提交清单等内容的完整诊断报告。'
+                : '导出包含项目列表、个人背景和提交清单的基础整理报告。完成诊断后可导出更详细的诊断报告。'}
             </p>
             <div className="flex items-center justify-between">
               <span className="text-xs text-stone-500">
-                {diagnosisResult ? '报告已就绪' : '请先完成诊断'}
+                {diagnosisResult ? '完整诊断报告已就绪' : '基础整理报告已就绪'}
               </span>
               <Button
                 onClick={handleExportPDF}
-                disabled={!diagnosisResult || isExportingPDF}
+                disabled={isExportingPDF || store.projects.length === 0}
                 loading={isExportingPDF}
               >
                 <Download className="w-4 h-4" />

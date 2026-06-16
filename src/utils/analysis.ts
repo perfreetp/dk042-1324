@@ -156,8 +156,6 @@ export function checkMaterialCompleteness(project: Project): MaterialCheckResult
 
   const coreMaterials = ['项目封面图', '设计草图/思维导图', '用户调研数据', '原型截图', '最终成品展示', '项目说明文档'];
 
-  const materialNames = project.materials.map((m) => m.name);
-
   coreMaterials.forEach((name) => {
     const material = project.materials.find((m) => m.name === name);
     if (!material) {
@@ -190,9 +188,13 @@ export function checkMaterialCompleteness(project: Project): MaterialCheckResult
     suggestions.push('建议补充项目反思和改进方向的思考');
   }
 
-  const totalRequired = coreMaterials.length;
-  const completeCount = totalRequired - missingItems.filter((m) => m.isComplete).length;
-  const completeness = Math.round((completeCount / totalRequired) * 100);
+  let completeness: number;
+  if (project.materials.length === 0) {
+    completeness = 0;
+  } else {
+    const completedCount = project.materials.filter((m) => m.isComplete).length;
+    completeness = Math.round((completedCount / project.materials.length) * 100);
+  }
 
   return {
     completeness,
@@ -201,7 +203,7 @@ export function checkMaterialCompleteness(project: Project): MaterialCheckResult
   };
 }
 
-export function evaluateNarrativeFlow(projects: Project[]): NarrativeEvaluation {
+export function evaluateNarrativeFlow(projects: Project[], narrativeDraft?: string, background?: { education: string; experience: string; skills: string[] }, targetMajor?: { school: string; major: string; admissionPreferences: string }): NarrativeEvaluation {
   const feedback: string[] = [];
   let score = 50;
 
@@ -271,6 +273,58 @@ export function evaluateNarrativeFlow(projects: Project[]): NarrativeEvaluation 
     feedback.push('部分项目过程描述不够完整');
   }
 
+  if (narrativeDraft && narrativeDraft.trim().length > 0) {
+    const draftLen = narrativeDraft.trim().length;
+
+    if (draftLen < 50) {
+      feedback.push('申请叙事过于简短，无法充分表达转专业动机和规划');
+      score -= 15;
+    } else if (draftLen < 100) {
+      feedback.push('申请叙事较短，建议补充更多细节');
+      score -= 5;
+    } else if (draftLen >= 300) {
+      score += 10;
+      feedback.push('申请叙事篇幅充分，故事完整');
+    }
+
+    const draftLower = narrativeDraft.toLowerCase();
+    const mentionsBackground = background && (background.education || background.experience);
+    const mentionsProjects = projects.some((p) => p.title && draftLower.includes(p.title.toLowerCase()));
+
+    if (!mentionsBackground && !draftLower.includes('背景') && !draftLower.includes('本科') && !draftLower.includes('专业') && !draftLower.includes('经历')) {
+      feedback.push('申请叙事未提及个人背景，建议说明原专业经历如何影响你的转向决定');
+      score -= 10;
+    }
+
+    if (!mentionsProjects && !draftLower.includes('项目') && !draftLower.includes('作品') && !draftLower.includes('实践')) {
+      feedback.push('申请叙事未提及具体项目，建议引用作品集中的项目作为能力证据');
+      score -= 10;
+    }
+
+    if (targetMajor) {
+      const mentionsTarget = draftLower.includes(targetMajor.school.toLowerCase()) || draftLower.includes(targetMajor.major.toLowerCase());
+      if (!mentionsTarget && !draftLower.includes('目标') && !draftLower.includes('申请') && !draftLower.includes('深造')) {
+        feedback.push('申请叙事未提及目标院校或专业，建议明确表达申请意向');
+        score -= 10;
+      } else if (mentionsTarget) {
+        score += 5;
+        feedback.push('叙事中明确提及了目标专业，方向清晰');
+      }
+    }
+
+    const hasTurningPoint = draftLower.includes('转') || draftLower.includes('决定') || draftLower.includes('触发') || draftLower.includes('改变') || draftLower.includes('意识') || draftLower.includes('发现');
+    if (hasTurningPoint) {
+      score += 5;
+      feedback.push('叙事中有明确的转折点，展现了转向的内在驱动力');
+    } else {
+      feedback.push('建议在叙事中明确描述触发转专业决定的关键时刻');
+      score -= 5;
+    }
+  } else {
+    feedback.push('尚未填写申请叙事草稿，建议在创建页补充，以评估故事是否讲得通');
+    score -= 15;
+  }
+
   score = Math.max(0, Math.min(100, score));
 
   return {
@@ -289,9 +343,9 @@ export function calculateOverallScore(abilityGaps: AbilityGap[], narrative: Narr
   return Math.round(Math.max(0, Math.min(100, overall)));
 }
 
-export function runDiagnosis(projects: Project[], requirements: AbilityRequirement[]): DiagnosisResult {
+export function runDiagnosis(projects: Project[], requirements: AbilityRequirement[], narrativeDraft?: string, background?: { education: string; experience: string; skills: string[] }, targetMajor?: { school: string; major: string; admissionPreferences: string }): DiagnosisResult {
   const abilityGaps = calculateAbilityGap(projects, requirements);
-  const narrativeEvaluation = evaluateNarrativeFlow(projects);
+  const narrativeEvaluation = evaluateNarrativeFlow(projects, narrativeDraft, background, targetMajor);
   const materialChecks = projects.map((project) => ({
     projectId: project.id,
     projectTitle: project.title,

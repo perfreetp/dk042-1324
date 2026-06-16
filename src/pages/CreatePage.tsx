@@ -14,7 +14,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { Plus, User, Briefcase, Lightbulb, Save } from 'lucide-react';
+import { Plus, User, Briefcase, Lightbulb, Save, PenLine } from 'lucide-react';
 import { usePortfolioStore } from '../store/usePortfolioStore';
 import ProjectCard from '../components/project/ProjectCard';
 import ProjectEditor from '../components/project/ProjectEditor';
@@ -31,12 +31,15 @@ export default function CreatePage() {
   const reorderProjects = usePortfolioStore((state) => state.reorderProjects);
   const updateBackground = usePortfolioStore((state) => state.updateBackground);
   const saveVersion = usePortfolioStore((state) => state.saveVersion);
+  const narrativeDraft = usePortfolioStore((state) => state.narrativeDraft);
+  const updateNarrativeDraft = usePortfolioStore((state) => state.updateNarrativeDraft);
+  const targetMajor = usePortfolioStore((state) => state.targetMajor);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [showSaveVersion, setShowSaveVersion] = useState(false);
   const [versionName, setVersionName] = useState('');
-  const [activeSection, setActiveSection] = useState<'projects' | 'background'>('projects');
+  const [activeSection, setActiveSection] = useState<'projects' | 'background' | 'narrative'>('projects');
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -130,6 +133,17 @@ export default function CreatePage() {
         >
           <User className="w-4 h-4" />
           个人背景
+        </button>
+        <button
+          onClick={() => setActiveSection('narrative')}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            activeSection === 'narrative'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-stone-500 hover:text-stone-700'
+          }`}
+        >
+          <PenLine className="w-4 h-4" />
+          申请叙事
         </button>
       </div>
 
@@ -285,6 +299,113 @@ export default function CreatePage() {
               )}
             </Card.Content>
           </Card>
+        </div>
+      )}
+
+      {activeSection === 'narrative' && (
+        <div className="space-y-8">
+          <Card>
+            <Card.Header>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-50 rounded flex items-center justify-center">
+                  <PenLine className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div>
+                  <Card.Title>申请叙事草稿</Card.Title>
+                  <p className="text-sm text-stone-500">用一段话把你的转专业故事讲清楚</p>
+                </div>
+              </div>
+            </Card.Header>
+            <Card.Content>
+              <div className="p-4 bg-indigo-50 rounded border border-indigo-100 mb-4">
+                <p className="text-sm text-indigo-700">
+                  <strong>写作提示：</strong>好的转专业叙事应该回答三个核心问题——
+                  你从哪里来（原专业背景如何塑造了你）？你为什么转向（什么触发了转专业的决定）？你准备了什么（项目如何证明你的能力和决心）？
+                  试着把个人背景、目标专业和项目经历串联成一个连贯的故事。
+                </p>
+              </div>
+              <textarea
+                value={narrativeDraft}
+                onChange={(e) => updateNarrativeDraft(e.target.value)}
+                placeholder={"示例：\n\n我本科主修计算机科学，在三年的编程训练中，我逐渐发现自己对「人如何与技术交互」比「技术本身」更感兴趣。大三时参与了一个校园出行服务的课题，从用户调研到原型设计全程主导，这段经历让我确认了转向交互设计的决心。\n\n为了补足设计基础，我自学了 Figma 和设计思维方法论，并完成了三个不同类型的交互设计项目：校园出行服务（完整的设计过程）、心理健康助手（侧重用户研究）、以及一个编程教育工具（体现技术背景的优势）。这些项目从不同角度证明了我具备设计思维、用户研究和技术实现的能力。\n\n我希望在清华大学交互设计专业深造，将技术背景与设计能力结合，做出真正懂用户的交互产品。"}
+                rows={12}
+                className="w-full px-4 py-3 border border-stone-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all resize-none text-sm leading-relaxed"
+              />
+              <div className="flex items-center justify-between mt-3">
+                <span className="text-xs text-stone-400">{narrativeDraft.length} 字</span>
+                {narrativeDraft.length > 0 && narrativeDraft.length < 100 && (
+                  <span className="text-xs text-amber-600">建议至少写 100 字，才能充分讲述你的故事</span>
+                )}
+                {narrativeDraft.length >= 100 && narrativeDraft.length < 300 && (
+                  <span className="text-xs text-stone-500">字数适中，可以更详细一些</span>
+                )}
+                {narrativeDraft.length >= 300 && (
+                  <span className="text-xs text-emerald-600">叙事篇幅充分</span>
+                )}
+              </div>
+            </Card.Content>
+          </Card>
+
+          {projects.length > 0 && (
+            <Card>
+              <Card.Header>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-stone-100 rounded flex items-center justify-center">
+                    <Lightbulb className="w-5 h-5 text-stone-600" />
+                  </div>
+                  <div>
+                    <Card.Title>叙事素材速览</Card.Title>
+                    <p className="text-sm text-stone-500">你的项目和个人背景中可用于叙事的素材</p>
+                  </div>
+                </div>
+              </Card.Header>
+              <Card.Content>
+                <div className="space-y-4">
+                  {background.education && (
+                    <div className="p-3 bg-stone-50 rounded border border-stone-100">
+                      <p className="text-xs font-medium text-stone-500 mb-1">教育背景</p>
+                      <p className="text-sm text-stone-700 whitespace-pre-line">{background.education}</p>
+                    </div>
+                  )}
+                  {background.experience && (
+                    <div className="p-3 bg-stone-50 rounded border border-stone-100">
+                      <p className="text-xs font-medium text-stone-500 mb-1">相关经历</p>
+                      <p className="text-sm text-stone-700 whitespace-pre-line">{background.experience}</p>
+                    </div>
+                  )}
+                  {background.skills.length > 0 && (
+                    <div className="p-3 bg-stone-50 rounded border border-stone-100">
+                      <p className="text-xs font-medium text-stone-500 mb-1">技能清单</p>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {background.skills.map((skill, i) => (
+                          <span key={i} className="px-2 py-0.5 text-xs bg-stone-100 text-stone-600 rounded">{skill}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {targetMajor && (
+                    <div className="p-3 bg-indigo-50 rounded border border-indigo-100">
+                      <p className="text-xs font-medium text-indigo-600 mb-1">目标专业</p>
+                      <p className="text-sm text-indigo-800 font-medium">{targetMajor.school} · {targetMajor.major}</p>
+                      <p className="text-xs text-indigo-600 mt-1">{targetMajor.admissionPreferences}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs font-medium text-stone-500 mb-2">项目列表（当前排序）</p>
+                    {[...projects].sort((a, b) => a.order - b.order).map((project, i) => (
+                      <div key={project.id} className="flex items-center gap-3 p-2 border-b border-stone-100 last:border-b-0">
+                        <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-stone-800 truncate">{project.title || '未命名项目'}</p>
+                          <p className="text-xs text-stone-500">{project.category}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Card.Content>
+            </Card>
+          )}
         </div>
       )}
 

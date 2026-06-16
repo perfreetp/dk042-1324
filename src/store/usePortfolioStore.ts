@@ -30,6 +30,7 @@ interface PortfolioStore extends PortfolioState {
   importData: (data: PortfolioState) => void;
   exportData: () => PortfolioState;
   resetAll: () => void;
+  updateNarrativeDraft: (draft: string) => void;
 }
 
 const initialBackground: Background = {
@@ -70,6 +71,7 @@ const initialState: PortfolioState = {
   background: initialBackground,
   targetMajor: undefined,
   versions: [],
+  narrativeDraft: '',
 };
 
 export const usePortfolioStore = create<PortfolioStore>()(
@@ -208,6 +210,7 @@ export const usePortfolioStore = create<PortfolioStore>()(
           background: JSON.parse(JSON.stringify(state.background)),
           targetMajor: state.targetMajor ? JSON.parse(JSON.stringify(state.targetMajor)) : undefined,
           versions: [],
+          narrativeDraft: state.narrativeDraft,
         };
 
         const version: PortfolioVersion = {
@@ -224,11 +227,12 @@ export const usePortfolioStore = create<PortfolioStore>()(
         const version = get().versions.find((v) => v.id === versionId);
         if (!version) return;
 
-        const { projects, background, targetMajor } = version.snapshot;
+        const { projects, background, targetMajor, narrativeDraft } = version.snapshot;
         set({
           projects: JSON.parse(JSON.stringify(projects)),
           background: JSON.parse(JSON.stringify(background)),
           targetMajor: targetMajor ? JSON.parse(JSON.stringify(targetMajor)) : undefined,
+          narrativeDraft: narrativeDraft || '',
         });
       },
 
@@ -243,6 +247,7 @@ export const usePortfolioStore = create<PortfolioStore>()(
           background: data.background || initialBackground,
           targetMajor: data.targetMajor,
           versions: data.versions || [],
+          narrativeDraft: data.narrativeDraft || '',
         });
       },
 
@@ -253,11 +258,16 @@ export const usePortfolioStore = create<PortfolioStore>()(
           background: state.background,
           targetMajor: state.targetMajor,
           versions: state.versions,
+          narrativeDraft: state.narrativeDraft,
         };
       },
 
       resetAll: () => {
         set(initialState);
+      },
+
+      updateNarrativeDraft: (draft: string) => {
+        set({ narrativeDraft: draft });
       },
     }),
     {

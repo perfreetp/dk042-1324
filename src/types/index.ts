@@ -71,6 +71,7 @@ export interface PortfolioState {
   background: Background;
   targetMajor?: TargetMajor;
   versions: PortfolioVersion[];
+  narrativeDraft: string;
 }
 
 export interface AbilityGap {

@@ -6,12 +6,14 @@ import type { DiagnosisResult } from '../types';
 export function useDiagnosis() {
   const projects = usePortfolioStore((state) => state.projects);
   const targetMajor = usePortfolioStore((state) => state.targetMajor);
+  const narrativeDraft = usePortfolioStore((state) => state.narrativeDraft);
+  const background = usePortfolioStore((state) => state.background);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
 
   const diagnosisResult: DiagnosisResult | null = useMemo(() => {
     if (!targetMajor || projects.length === 0) return null;
-    return runDiagnosis(projects, targetMajor.abilityRequirements);
-  }, [projects, targetMajor]);
+    return runDiagnosis(projects, targetMajor.abilityRequirements, narrativeDraft, background, targetMajor);
+  }, [projects, targetMajor, narrativeDraft, background]);
 
   const runFullDiagnosis = () => {
     setIsDiagnosing(true);

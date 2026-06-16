@@ -1,12 +1,93 @@
 import { useState } from 'react';
-import { CheckCircle2, Circle, Clock, GitCompare, Trash2, RotateCcw, FileCheck, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Clock, GitCompare, Trash2, RotateCcw, FileCheck, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { usePortfolioStore } from '../store/usePortfolioStore';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import { formatDate } from '../utils/io';
-import { useDiagnosis } from '../hooks/useDiagnosis';
-import type { PortfolioVersion, Project } from '../types';
-import { calculateProjectProgress } from '../utils/io';
+import type { PortfolioVersion, Project, Process } from '../types';
+
+interface FieldChange {
+  field: string;
+  oldVal: string;
+  newVal: string;
+}
+
+interface ProjectDiff {
+  type: 'added' | 'removed' | 'modified';
+  project: Project;
+  changes: FieldChange[];
+}
+
+interface VersionDiffResult {
+  projectDiffs: ProjectDiff[];
+  majorChanged: boolean;
+  oldMajor: string;
+  newMajor: string;
+  narrativeChanged: boolean;
+  oldNarrative: string;
+  newNarrative: string;
+  summary: { added: number; removed: number; modified: number };
+}
+
+function compareProjects(curr: Project, prev: Project): FieldChange[] {
+  const changes: FieldChange[] = [];
+
+  if (curr.title !== prev.title) {
+    changes.push({ field: '项目标题', oldVal: prev.title || '(空)', newVal: curr.title || '(空)' });
+  }
+  if (curr.description !== prev.description) {
+    changes.push({ field: '项目简介', oldVal: prev.description || '(空)', newVal: curr.description || '(空)' });
+  }
+  if (curr.category !== prev.category) {
+    changes.push({ field: '项目分类', oldVal: prev.category, newVal: curr.category });
+  }
+
+  const processFields: { key: keyof Process; label: string }[] = [
+    { key: 'motivation', label: '项目动机' },
+    { key: 'research', label: '调研分析' },
+    { key: 'ideation', label: '方案构思' },
+    { key: 'implementation', label: '设计实现' },
+    { key: 'reflection', label: '反思总结' },
+  ];
+
+  processFields.forEach(({ key, label }) => {
+    if (curr.process[key] !== prev.process[key]) {
+      changes.push({
+        field: label,
+        oldVal: prev.process[key] ? (prev.process[key].length > 60 ? prev.process[key].slice(0, 60) + '...' : prev.process[key]) : '(空)',
+        newVal: curr.process[key] ? (curr.process[key].length > 60 ? curr.process[key].slice(0, 60) + '...' : curr.process[key]) : '(空)',
+      });
+    }
+  });
+
+  const currCompleted = curr.materials.filter((m) => m.isComplete).length;
+  const prevCompleted = prev.materials.filter((m) => m.isComplete).length;
+  const currTotal = curr.materials.length;
+  const prevTotal = prev.materials.length;
+
+  if (currCompleted !== prevCompleted || currTotal !== prevTotal) {
+    changes.push({
+      field: '素材完成度',
+      oldVal: `${prevCompleted}/${prevTotal} 已完成`,
+      newVal: `${currCompleted}/${currTotal} 已完成`,
+    });
+
+    const currNames = new Set(curr.materials.filter((m) => m.isComplete).map((m) => m.name));
+    const prevNames = new Set(prev.materials.filter((m) => m.isComplete).map((m) => m.name));
+
+    const newlyCompleted = [...currNames].filter((n) => !prevNames.has(n));
+    const newlyUnchecked = [...prevNames].filter((n) => !currNames.has(n));
+
+    if (newlyCompleted.length > 0) {
+      changes.push({ field: '新完成素材', oldVal: '—', newVal: newlyCompleted.join('、') });
+    }
+    if (newlyUnchecked.length > 0) {
+      changes.push({ field: '取消完成素材', oldVal: newlyUnchecked.join('、'), newVal: '—' });
+    }
+  }
+
+  return changes;
+}
 
 export default function ComparePage() {
   const targetMajor = usePortfolioStore((state) => state.targetMajor);
@@ -15,12 +96,12 @@ export default function ComparePage() {
   const restoreVersion = usePortfolioStore((state) => state.restoreVersion);
   const deleteVersion = usePortfolioStore((state) => state.deleteVersion);
   const projects = usePortfolioStore((state) => state.projects);
-
-  const { diagnosisResult } = useDiagnosis();
+  const narrativeDraft = usePortfolioStore((state) => state.narrativeDraft);
 
   const [activeTab, setActiveTab] = useState<'checklist' | 'versions'>('checklist');
   const [selectedVersion, setSelectedVersion] = useState<PortfolioVersion | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<string | null>(null);
+  const [expandedDiffs, setExpandedDiffs] = useState<Set<number>>(new Set());
 
   const requiredItems = targetMajor?.submissionItems.filter((item) => item.isRequired) || [];
   const optionalItems = targetMajor?.submissionItems.filter((item) => !item.isRequired) || [];
@@ -45,32 +126,60 @@ export default function ComparePage() {
     setSelectedVersion(null);
   };
 
-  const getVersionDiff = (version: PortfolioVersion) => {
+  const getVersionDiff = (version: PortfolioVersion): VersionDiffResult => {
     const currentProjects = projects;
     const versionProjects = version.snapshot.projects;
 
-    const diff: { type: 'added' | 'removed' | 'modified'; project: Project }[] = [];
+    const projectDiffs: ProjectDiff[] = [];
 
     currentProjects.forEach((curr) => {
       const verProj = versionProjects.find((p) => p.id === curr.id);
       if (!verProj) {
-        diff.push({ type: 'added', project: curr });
+        projectDiffs.push({ type: 'added', project: curr, changes: [] });
       } else {
-        const currProgress = calculateProjectProgress(curr.process, curr.materials);
-        const verProgress = calculateProjectProgress(verProj.process, verProj.materials);
-        if (currProgress !== verProgress || curr.title !== verProj.title) {
-          diff.push({ type: 'modified', project: curr });
+        const changes = compareProjects(curr, verProj);
+        if (changes.length > 0) {
+          projectDiffs.push({ type: 'modified', project: curr, changes });
         }
       }
     });
 
     versionProjects.forEach((verProj) => {
       if (!currentProjects.find((p) => p.id === verProj.id)) {
-        diff.push({ type: 'removed', project: verProj });
+        projectDiffs.push({ type: 'removed', project: verProj, changes: [] });
       }
     });
 
-    return diff;
+    const currMajorStr = targetMajor ? `${targetMajor.school} · ${targetMajor.major}` : '(未选择)';
+    const verMajorStr = version.snapshot.targetMajor ? `${version.snapshot.targetMajor.school} · ${version.snapshot.targetMajor.major}` : '(未选择)';
+
+    const currNarrative = narrativeDraft || '';
+    const verNarrative = version.snapshot.narrativeDraft || '';
+
+    return {
+      projectDiffs,
+      majorChanged: currMajorStr !== verMajorStr,
+      oldMajor: verMajorStr,
+      newMajor: currMajorStr,
+      narrativeChanged: currNarrative !== verNarrative,
+      oldNarrative: verNarrative,
+      newNarrative: currNarrative,
+      summary: {
+        added: projectDiffs.filter((d) => d.type === 'added').length,
+        removed: projectDiffs.filter((d) => d.type === 'removed').length,
+        modified: projectDiffs.filter((d) => d.type === 'modified').length,
+      },
+    };
+  };
+
+  const toggleDiff = (index: number) => {
+    const newSet = new Set(expandedDiffs);
+    if (newSet.has(index)) {
+      newSet.delete(index);
+    } else {
+      newSet.add(index);
+    }
+    setExpandedDiffs(newSet);
   };
 
   return (
@@ -277,7 +386,7 @@ export default function ComparePage() {
                       {versions.map((version) => (
                         <div
                           key={version.id}
-                          onClick={() => setSelectedVersion(version)}
+                          onClick={() => { setSelectedVersion(version); setExpandedDiffs(new Set()); }}
                           className={`p-4 cursor-pointer transition-colors ${
                             selectedVersion?.id === version.id
                               ? 'bg-indigo-50'
@@ -328,35 +437,91 @@ export default function ComparePage() {
               </div>
 
               <div className="lg:col-span-2">
-                {selectedVersion ? (
-                  <Card>
-                    <Card.Header>
-                      <div className="flex items-center justify-between">
+                {selectedVersion ? (() => {
+                  const diff = getVersionDiff(selectedVersion);
+                  const hasChanges = diff.projectDiffs.length > 0 || diff.majorChanged || diff.narrativeChanged;
+
+                  return (
+                    <Card>
+                      <Card.Header>
                         <div>
                           <Card.Title>版本对比：{selectedVersion.name}</Card.Title>
                           <p className="text-sm text-stone-500">
                             对比当前版本与 {formatDate(selectedVersion.createdAt)}
                           </p>
                         </div>
-                      </div>
-                    </Card.Header>
-                    <Card.Content>
-                      {(() => {
-                        const diff = getVersionDiff(selectedVersion);
-                        if (diff.length === 0) {
-                          return (
-                            <div className="text-center py-8">
-                              <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
-                              <p className="text-stone-500">与当前版本无差异</p>
-                            </div>
-                          );
-                        }
-                        return (
+                      </Card.Header>
+                      <Card.Content>
+                        {!hasChanges ? (
+                          <div className="text-center py-8">
+                            <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
+                            <p className="text-stone-500">与当前版本无差异</p>
+                          </div>
+                        ) : (
                           <div className="space-y-4">
-                            {diff.map((item, index) => (
+                            {(diff.summary.added > 0 || diff.summary.removed > 0 || diff.summary.modified > 0) && (
+                              <div className="flex gap-3 mb-4">
+                                {diff.summary.added > 0 && (
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 text-emerald-800 rounded-full text-sm font-medium">
+                                    +{diff.summary.added} 新增
+                                  </span>
+                                )}
+                                {diff.summary.removed > 0 && (
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-100 text-red-800 rounded-full text-sm font-medium">
+                                    -{diff.summary.removed} 删除
+                                  </span>
+                                )}
+                                {diff.summary.modified > 0 && (
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-800 rounded-full text-sm font-medium">
+                                    ~{diff.summary.modified} 修改
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {diff.majorChanged && (
+                              <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+                                <h4 className="text-sm font-medium text-indigo-800 mb-2">目标专业变更</h4>
+                                <div className="flex items-center gap-3 text-sm">
+                                  <span className="text-stone-600 line-through">{diff.oldMajor}</span>
+                                  <span className="text-indigo-600">→</span>
+                                  <span className="text-indigo-800 font-medium">{diff.newMajor}</span>
+                                </div>
+                              </div>
+                            )}
+
+                            {diff.narrativeChanged && (
+                              <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                                <h4 className="text-sm font-medium text-purple-800 mb-2">申请叙事变更</h4>
+                                {diff.oldNarrative && !diff.newNarrative && (
+                                  <p className="text-sm text-red-700">叙事草稿已被删除</p>
+                                )}
+                                {!diff.oldNarrative && diff.newNarrative && (
+                                  <div>
+                                    <p className="text-xs text-emerald-700 mb-1 font-medium">新增叙事草稿</p>
+                                    <p className="text-sm text-stone-700 line-clamp-3">{diff.newNarrative}</p>
+                                  </div>
+                                )}
+                                {diff.oldNarrative && diff.newNarrative && (
+                                  <div>
+                                    <p className="text-xs text-amber-700 mb-2 font-medium">内容已修改</p>
+                                    <div className="space-y-2">
+                                      <div className="p-2 bg-red-50 border border-red-100 rounded text-sm text-stone-700 line-clamp-2">
+                                        <span className="text-xs text-red-600 font-medium mr-1">旧：</span>{diff.oldNarrative}
+                                      </div>
+                                      <div className="p-2 bg-emerald-50 border border-emerald-100 rounded text-sm text-stone-700 line-clamp-2">
+                                        <span className="text-xs text-emerald-600 font-medium mr-1">新：</span>{diff.newNarrative}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {diff.projectDiffs.map((item, index) => (
                               <div
                                 key={index}
-                                className={`p-4 rounded-lg border ${
+                                className={`rounded-lg border overflow-hidden ${
                                   item.type === 'added'
                                     ? 'bg-emerald-50 border-emerald-200'
                                     : item.type === 'removed'
@@ -364,9 +529,19 @@ export default function ComparePage() {
                                     : 'bg-amber-50 border-amber-200'
                                 }`}
                               >
-                                <div className="flex items-start gap-3">
+                                <button
+                                  onClick={() => toggleDiff(index)}
+                                  className="w-full flex items-center gap-3 p-4 text-left hover:bg-white/50 transition-colors"
+                                >
+                                  {item.type === 'modified' && item.changes.length > 0 && (
+                                    expandedDiffs.has(index) ? (
+                                      <ChevronDown className="w-4 h-4 text-stone-400 flex-shrink-0" />
+                                    ) : (
+                                      <ChevronRight className="w-4 h-4 text-stone-400 flex-shrink-0" />
+                                    )
+                                  )}
                                   <span
-                                    className={`px-2 py-0.5 text-xs font-medium rounded ${
+                                    className={`px-2 py-0.5 text-xs font-medium rounded flex-shrink-0 ${
                                       item.type === 'added'
                                         ? 'bg-emerald-200 text-emerald-800'
                                         : item.type === 'removed'
@@ -374,46 +549,67 @@ export default function ComparePage() {
                                         : 'bg-amber-200 text-amber-800'
                                     }`}
                                   >
-                                    {item.type === 'added'
-                                      ? '新增'
-                                      : item.type === 'removed'
-                                      ? '删除'
-                                      : '修改'}
+                                    {item.type === 'added' ? '新增' : item.type === 'removed' ? '删除' : '修改'}
                                   </span>
-                                  <div className="flex-1">
+                                  <div className="flex-1 min-w-0">
                                     <p className="font-medium text-stone-800">
                                       {item.project.title || '未命名项目'}
                                     </p>
-                                    <p className="text-sm text-stone-500">
-                                      {item.project.category}
-                                    </p>
+                                    <p className="text-sm text-stone-500">{item.project.category}</p>
                                   </div>
-                                </div>
+                                  {item.type === 'modified' && (
+                                    <span className="text-xs text-stone-500 flex-shrink-0">
+                                      {item.changes.length} 处变更
+                                    </span>
+                                  )}
+                                </button>
+
+                                {item.type === 'modified' && expandedDiffs.has(index) && item.changes.length > 0 && (
+                                  <div className="px-4 pb-4 border-t border-amber-100">
+                                    <div className="mt-3 space-y-2">
+                                      {item.changes.map((change, ci) => (
+                                        <div key={ci} className="p-3 bg-white rounded border border-stone-200">
+                                          <p className="text-xs font-medium text-indigo-700 mb-1">{change.field}</p>
+                                          <div className="space-y-1">
+                                            <div className="flex items-start gap-2 text-xs">
+                                              <span className="text-red-500 flex-shrink-0">旧</span>
+                                              <span className="text-stone-600 break-all">{change.oldVal}</span>
+                                            </div>
+                                            <div className="flex items-start gap-2 text-xs">
+                                              <span className="text-emerald-600 flex-shrink-0">新</span>
+                                              <span className="text-stone-800 font-medium break-all">{change.newVal}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
-                        );
-                      })()}
+                        )}
 
-                      <div className="mt-6 pt-6 border-t border-stone-200">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div className="p-4 bg-stone-50 rounded-lg">
-                            <p className="text-stone-500 mb-1">历史版本项目数</p>
-                            <p className="text-2xl font-bold text-stone-800">
-                              {selectedVersion.snapshot.projects.length}
-                            </p>
-                          </div>
-                          <div className="p-4 bg-indigo-50 rounded-lg">
-                            <p className="text-indigo-600 mb-1">当前版本项目数</p>
-                            <p className="text-2xl font-bold text-indigo-700">
-                              {projects.length}
-                            </p>
+                        <div className="mt-6 pt-6 border-t border-stone-200">
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="p-4 bg-stone-50 rounded-lg">
+                              <p className="text-stone-500 mb-1">历史版本项目数</p>
+                              <p className="text-2xl font-bold text-stone-800">
+                                {selectedVersion.snapshot.projects.length}
+                              </p>
+                            </div>
+                            <div className="p-4 bg-indigo-50 rounded-lg">
+                              <p className="text-indigo-600 mb-1">当前版本项目数</p>
+                              <p className="text-2xl font-bold text-indigo-700">
+                                {projects.length}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </Card.Content>
-                  </Card>
-                ) : (
+                      </Card.Content>
+                    </Card>
+                  );
+                })() : (
                   <Card className="text-center py-16">
                     <GitCompare className="w-16 h-16 text-stone-300 mx-auto mb-4" />
                     <h3 className="text-xl font-medium text-stone-800 mb-2">选择一个版本进行对比</h3>
