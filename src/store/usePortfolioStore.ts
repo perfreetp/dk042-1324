@@ -31,6 +31,7 @@ interface PortfolioStore extends PortfolioState {
   exportData: () => PortfolioState;
   resetAll: () => void;
   updateNarrativeDraft: (draft: string) => void;
+  partialRestoreVersion: (versionId: string, parts: { projects?: boolean; targetMajor?: boolean; narrativeDraft?: boolean }) => void;
 }
 
 const initialBackground: Background = {
@@ -268,6 +269,24 @@ export const usePortfolioStore = create<PortfolioStore>()(
 
       updateNarrativeDraft: (draft: string) => {
         set({ narrativeDraft: draft });
+      },
+
+      partialRestoreVersion: (versionId, parts) => {
+        const version = get().versions.find((v) => v.id === versionId);
+        if (!version) return;
+
+        const updates: Partial<PortfolioState> = {};
+        if (parts.projects) {
+          updates.projects = JSON.parse(JSON.stringify(version.snapshot.projects));
+        }
+        if (parts.targetMajor) {
+          updates.targetMajor = version.snapshot.targetMajor ? JSON.parse(JSON.stringify(version.snapshot.targetMajor)) : undefined;
+        }
+        if (parts.narrativeDraft) {
+          updates.narrativeDraft = version.snapshot.narrativeDraft || '';
+        }
+
+        set(updates);
       },
     }),
     {

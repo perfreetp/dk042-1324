@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react';
-import { Download, Upload, FileJson, FileText, HardDrive, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Download, Upload, FileJson, FileText, HardDrive, AlertTriangle, CheckCircle2, BookOpen } from 'lucide-react';
 import { usePortfolioStore } from '../store/usePortfolioStore';
 import { useDiagnosis } from '../hooks/useDiagnosis';
-import { exportToPDF } from '../utils/pdf';
+import { exportToPDF, type ReportType } from '../utils/pdf';
 import { exportToJSON, importFromJSON, validatePortfolioData, formatDate } from '../utils/io';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -18,6 +18,7 @@ export default function ExportPage() {
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [importMessage, setImportMessage] = useState('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [selectedReportType, setSelectedReportType] = useState<ReportType>(diagnosisResult ? 'full' : 'basic');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const portfolioState: PortfolioState = {
@@ -31,7 +32,7 @@ export default function ExportPage() {
   const handleExportPDF = async () => {
     setIsExportingPDF(true);
     try {
-      await exportToPDF(portfolioState, diagnosisResult);
+      await exportToPDF(portfolioState, diagnosisResult, selectedReportType);
     } catch (error) {
       console.error('PDF export failed:', error);
     } finally {
@@ -155,24 +156,74 @@ export default function ExportPage() {
                 <FileText className="w-5 h-5 text-indigo-600" />
               </div>
               <div>
-                <Card.Title>导出诊断报告</Card.Title>
-                <p className="text-sm text-stone-500">生成 PDF 格式的完整诊断报告</p>
+                <Card.Title>导出报告</Card.Title>
+                <p className="text-sm text-stone-500">选择报告类型并生成 PDF</p>
               </div>
             </div>
           </Card.Header>
           <Card.Content>
-            <p className="text-sm text-stone-600 mb-4">
-              {diagnosisResult
-                ? '导出包含综合评分、能力分析、素材检查、项目列表、提交清单等内容的完整诊断报告。'
-                : '导出包含项目列表、个人背景和提交清单的基础整理报告。完成诊断后可导出更详细的诊断报告。'}
-            </p>
+            <div className="space-y-3 mb-4">
+              <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors hover:bg-stone-50 border-indigo-200 bg-indigo-50/50">
+                <input
+                  type="radio"
+                  name="reportType"
+                  value="full"
+                  checked={selectedReportType === 'full'}
+                  onChange={() => setSelectedReportType('full')}
+                  disabled={!diagnosisResult}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-indigo-600" />
+                    <span className="font-medium text-sm text-stone-800">完整诊断报告</span>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-1">综合评分、能力缺口、叙事评估、素材检查、项目列表、提交清单</p>
+                  {!diagnosisResult && <p className="text-xs text-amber-600 mt-1">需要先完成诊断</p>}
+                </div>
+              </label>
+              <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors hover:bg-stone-50 border-stone-200">
+                <input
+                  type="radio"
+                  name="reportType"
+                  value="basic"
+                  checked={selectedReportType === 'basic'}
+                  onChange={() => setSelectedReportType('basic')}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <HardDrive className="w-4 h-4 text-stone-600" />
+                    <span className="font-medium text-sm text-stone-800">基础整理报告</span>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-1">项目列表、个人背景、叙事草稿、提交清单</p>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors hover:bg-stone-50 border-stone-200">
+                <input
+                  type="radio"
+                  name="reportType"
+                  value="narrative"
+                  checked={selectedReportType === 'narrative'}
+                  onChange={() => setSelectedReportType('narrative')}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-stone-600" />
+                    <span className="font-medium text-sm text-stone-800">申请叙事建议报告</span>
+                  </div>
+                  <p className="text-xs text-stone-500 mt-1">叙事评分、评估详情、草稿原文、个人背景</p>
+                </div>
+              </label>
+            </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-stone-500">
-                {diagnosisResult ? '完整诊断报告已就绪' : '基础整理报告已就绪'}
+                {selectedReportType === 'full' && diagnosisResult ? '完整诊断报告已就绪' : selectedReportType === 'basic' ? '基础整理报告已就绪' : '叙事建议报告已就绪'}
               </span>
               <Button
                 onClick={handleExportPDF}
-                disabled={isExportingPDF || store.projects.length === 0}
+                disabled={isExportingPDF || store.projects.length === 0 || (selectedReportType === 'full' && !diagnosisResult)}
                 loading={isExportingPDF}
               >
                 <Download className="w-4 h-4" />

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { CheckCircle2, Clock, GitCompare, Trash2, RotateCcw, FileCheck, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CheckCircle2, Clock, GitCompare, Trash2, RotateCcw, FileCheck, AlertCircle, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { usePortfolioStore } from '../store/usePortfolioStore';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -90,17 +91,20 @@ function compareProjects(curr: Project, prev: Project): FieldChange[] {
 }
 
 export default function ComparePage() {
+  const navigate = useNavigate();
   const targetMajor = usePortfolioStore((state) => state.targetMajor);
   const versions = usePortfolioStore((state) => state.versions);
   const updateSubmissionItem = usePortfolioStore((state) => state.updateSubmissionItem);
   const restoreVersion = usePortfolioStore((state) => state.restoreVersion);
   const deleteVersion = usePortfolioStore((state) => state.deleteVersion);
+  const partialRestoreVersion = usePortfolioStore((state) => state.partialRestoreVersion);
   const projects = usePortfolioStore((state) => state.projects);
   const narrativeDraft = usePortfolioStore((state) => state.narrativeDraft);
 
   const [activeTab, setActiveTab] = useState<'checklist' | 'versions'>('checklist');
   const [selectedVersion, setSelectedVersion] = useState<PortfolioVersion | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<string | null>(null);
+  const [restoreParts, setRestoreParts] = useState({ projects: true, targetMajor: true, narrativeDraft: true });
   const [expandedDiffs, setExpandedDiffs] = useState<Set<number>>(new Set());
 
   const requiredItems = targetMajor?.submissionItems.filter((item) => item.isRequired) || [];
@@ -121,9 +125,15 @@ export default function ComparePage() {
   };
 
   const handleRestoreVersion = (versionId: string) => {
-    restoreVersion(versionId);
+    const isPartial = !restoreParts.projects || !restoreParts.targetMajor || !restoreParts.narrativeDraft;
+    if (isPartial) {
+      partialRestoreVersion(versionId, restoreParts);
+    } else {
+      restoreVersion(versionId);
+    }
     setShowRestoreConfirm(null);
     setSelectedVersion(null);
+    setRestoreParts({ projects: true, targetMajor: true, narrativeDraft: true });
   };
 
   const getVersionDiff = (version: PortfolioVersion): VersionDiffResult => {
@@ -492,7 +502,16 @@ export default function ComparePage() {
 
                             {diff.narrativeChanged && (
                               <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                                <h4 className="text-sm font-medium text-purple-800 mb-2">申请叙事变更</h4>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="text-sm font-medium text-purple-800">申请叙事变更</h4>
+                                  <button
+                                    onClick={() => navigate('/create?tab=narrative')}
+                                    className="p-1.5 text-purple-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                    title="去编辑叙事草稿"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                                 {diff.oldNarrative && !diff.newNarrative && (
                                   <p className="text-sm text-red-700">叙事草稿已被删除</p>
                                 )}
@@ -562,6 +581,15 @@ export default function ComparePage() {
                                       {item.changes.length} 处变更
                                     </span>
                                   )}
+                                  {item.type !== 'removed' && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); navigate(`/create?editProject=${item.project.id}`); }}
+                                      className="p-1.5 text-stone-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors flex-shrink-0"
+                                      title="去编辑此项目"
+                                    >
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                 </button>
 
                                 {item.type === 'modified' && expandedDiffs.has(index) && item.changes.length > 0 && (
@@ -628,20 +656,59 @@ export default function ComparePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/50"
-            onClick={() => setShowRestoreConfirm(null)}
+            onClick={() => { setShowRestoreConfirm(null); setRestoreParts({ projects: true, targetMajor: true, narrativeDraft: true }); }}
           />
           <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold text-stone-800 mb-2">确认恢复版本</h3>
-            <p className="text-sm text-stone-500 mb-6">
-              恢复此版本将覆盖当前所有数据。此操作不可撤销，确定继续吗？
+            <h3 className="text-lg font-semibold text-stone-800 mb-2">恢复版本</h3>
+            <p className="text-sm text-stone-500 mb-4">
+              选择要恢复的内容，未勾选的部分将保持当前状态不变。
             </p>
+            <div className="space-y-3 mb-6">
+              <label className="flex items-center gap-3 p-3 rounded-lg border border-stone-200 hover:bg-stone-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={restoreParts.projects}
+                  onChange={(e) => setRestoreParts({ ...restoreParts, projects: e.target.checked })}
+                  className="rounded"
+                />
+                <div>
+                  <p className="text-sm font-medium text-stone-800">项目列表与顺序</p>
+                  <p className="text-xs text-stone-500">恢复该版本的所有项目内容</p>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 p-3 rounded-lg border border-stone-200 hover:bg-stone-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={restoreParts.targetMajor}
+                  onChange={(e) => setRestoreParts({ ...restoreParts, targetMajor: e.target.checked })}
+                  className="rounded"
+                />
+                <div>
+                  <p className="text-sm font-medium text-stone-800">目标专业</p>
+                  <p className="text-xs text-stone-500">恢复该版本的目标院校和专业</p>
+                </div>
+              </label>
+              <label className="flex items-center gap-3 p-3 rounded-lg border border-stone-200 hover:bg-stone-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={restoreParts.narrativeDraft}
+                  onChange={(e) => setRestoreParts({ ...restoreParts, narrativeDraft: e.target.checked })}
+                  className="rounded"
+                />
+                <div>
+                  <p className="text-sm font-medium text-stone-800">申请叙事草稿</p>
+                  <p className="text-xs text-stone-500">恢复该版本的叙事草稿内容</p>
+                </div>
+              </label>
+            </div>
             <div className="flex justify-end gap-3">
-              <Button variant="ghost" onClick={() => setShowRestoreConfirm(null)}>
+              <Button variant="ghost" onClick={() => { setShowRestoreConfirm(null); setRestoreParts({ projects: true, targetMajor: true, narrativeDraft: true }); }}>
                 取消
               </Button>
               <Button
                 variant="danger"
                 onClick={() => handleRestoreVersion(showRestoreConfirm)}
+                disabled={!restoreParts.projects && !restoreParts.targetMajor && !restoreParts.narrativeDraft}
               >
                 确认恢复
               </Button>

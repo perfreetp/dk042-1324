@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   closestCenter,
@@ -14,15 +15,59 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { Plus, User, Briefcase, Lightbulb, Save, PenLine } from 'lucide-react';
+import { Plus, User, Briefcase, Lightbulb, Save, PenLine, Sparkles } from 'lucide-react';
 import { usePortfolioStore } from '../store/usePortfolioStore';
 import ProjectCard from '../components/project/ProjectCard';
 import ProjectEditor from '../components/project/ProjectEditor';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
-import type { Project } from '../types';
+import type { Project, Background, TargetMajor } from '../types';
+
+function generateDraft(background: Background, targetMajor: TargetMajor | undefined, projects: Project[]): string {
+  const parts: string[] = [];
+
+  if (background.education || background.experience) {
+    const eduPart = background.education ? `我来自${background.education}` : '';
+    const expPart = background.experience ? `，期间${background.experience}` : '';
+    parts.push(`${eduPart}${expPart}。在这些经历中，我逐渐发现自己对设计方向的兴趣远超原专业领域。`);
+  } else {
+    parts.push('我在原专业的学习过程中，逐渐发现了自己真正的兴趣所在。');
+  }
+
+  if (targetMajor) {
+    parts.push(`经过深思熟虑，我决定申请${targetMajor.school}${targetMajor.major}，因为我相信这个方向更契合我的能力与志向。`);
+  } else {
+    parts.push('经过深思熟虑，我决定转向自己真正热爱的专业方向。');
+  }
+
+  const sorted = [...projects].sort((a, b) => a.order - b.order);
+  if (sorted.length > 0) {
+    const projectDescs = sorted.map((p, i) => {
+      const title = p.title || `项目${i + 1}`;
+      const cat = p.category;
+      if (p.description) {
+        return `${title}（${cat}：${p.description.slice(0, 60)}${p.description.length > 60 ? '...' : ''}）`;
+      }
+      return `${title}（${cat}）`;
+    });
+    parts.push(`为了证明我的能力和决心，我完成了以下项目：${projectDescs.join('、')}。这些项目从不同角度展示了我具备转向目标专业所需的核心素养。`);
+  } else {
+    parts.push('我正在积极准备相关项目，以证明我在目标专业方向上的能力与潜力。');
+  }
+
+  if (background.skills.length > 0) {
+    parts.push(`此外，我掌握的${background.skills.slice(0, 5).join('、')}等技能，也将在目标专业的学习中发挥重要作用。`);
+  }
+
+  if (targetMajor) {
+    parts.push(`我希望在${targetMajor.school}${targetMajor.major}深造，将已有积累与新的专业训练结合，做出有价值的成果。`);
+  }
+
+  return parts.join('\n\n');
+}
 
 export default function CreatePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const projects = usePortfolioStore((state) => state.projects);
   const background = usePortfolioStore((state) => state.background);
   const addProject = usePortfolioStore((state) => state.addProject);
@@ -40,6 +85,30 @@ export default function CreatePage() {
   const [showSaveVersion, setShowSaveVersion] = useState(false);
   const [versionName, setVersionName] = useState('');
   const [activeSection, setActiveSection] = useState<'projects' | 'background' | 'narrative'>('projects');
+  const [showDraftMode, setShowDraftMode] = useState<'overwrite' | 'append' | null>(null);
+
+  useEffect(() => {
+    const editProjectId = searchParams.get('editProject');
+    const tab = searchParams.get('tab');
+    if (editProjectId) {
+      const project = projects.find((p) => p.id === editProjectId);
+      if (project) {
+        setEditingProject(project);
+        setIsEditorOpen(true);
+      }
+      searchParams.delete('editProject');
+      setSearchParams(searchParams, { replace: true });
+    }
+    if (tab === 'narrative') {
+      setActiveSection('narrative');
+      searchParams.delete('tab');
+      setSearchParams(searchParams, { replace: true });
+    } else if (tab === 'background') {
+      setActiveSection('background');
+      searchParams.delete('tab');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -324,6 +393,61 @@ export default function CreatePage() {
                   试着把个人背景、目标专业和项目经历串联成一个连贯的故事。
                 </p>
               </div>
+              <div className="flex items-center gap-3 mb-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (narrativeDraft.trim().length > 0) {
+                      setShowDraftMode('overwrite');
+                    } else {
+                      const draft = generateDraft(background, targetMajor, projects);
+                      updateNarrativeDraft(draft);
+                    }
+                  }}
+                  disabled={projects.length === 0 && !background.education && !background.experience}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  一键生成草稿
+                </Button>
+                <span className="text-xs text-stone-400">根据个人背景、目标专业和项目排序自动生成</span>
+              </div>
+              {showDraftMode && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg mb-4">
+                  <p className="text-sm text-amber-800 font-medium mb-3">已有叙事草稿，请选择生成方式：</p>
+                  <div className="flex gap-3">
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => {
+                        const draft = generateDraft(background, targetMajor, projects);
+                        updateNarrativeDraft(draft);
+                        setShowDraftMode(null);
+                      }}
+                    >
+                      覆盖现有草稿
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        const draft = generateDraft(background, targetMajor, projects);
+                        updateNarrativeDraft(narrativeDraft + '\n\n' + draft);
+                        setShowDraftMode(null);
+                      }}
+                    >
+                      追加到现有草稿
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowDraftMode(null)}
+                    >
+                      取消
+                    </Button>
+                  </div>
+                </div>
+              )}
               <textarea
                 value={narrativeDraft}
                 onChange={(e) => updateNarrativeDraft(e.target.value)}

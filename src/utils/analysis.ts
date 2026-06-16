@@ -288,37 +288,89 @@ export function evaluateNarrativeFlow(projects: Project[], narrativeDraft?: stri
     }
 
     const draftLower = narrativeDraft.toLowerCase();
-    const mentionsBackground = background && (background.education || background.experience);
-    const mentionsProjects = projects.some((p) => p.title && draftLower.includes(p.title.toLowerCase()));
 
-    if (!mentionsBackground && !draftLower.includes('背景') && !draftLower.includes('本科') && !draftLower.includes('专业') && !draftLower.includes('经历')) {
-      feedback.push('申请叙事未提及个人背景，建议说明原专业经历如何影响你的转向决定');
+    const hasEdu = background && background.education.trim().length > 0;
+    const hasExp = background && background.experience.trim().length > 0;
+    const hasSkills = background && background.skills.length > 0;
+
+    const draftMentionsEdu = hasEdu && (
+      draftLower.includes(background!.education.toLowerCase().slice(0, 4)) ||
+      draftLower.includes('背景') || draftLower.includes('本科') || draftLower.includes('专业') || draftLower.includes('学位') || draftLower.includes('学校') || draftLower.includes('学院')
+    );
+    const draftMentionsExp = hasExp && (
+      draftLower.includes(background!.experience.toLowerCase().slice(0, 4)) ||
+      draftLower.includes('经历') || draftLower.includes('实习') || draftLower.includes('工作') || draftLower.includes('参与') || draftLower.includes('从事')
+    );
+
+    if (hasEdu && !draftMentionsEdu) {
+      feedback.push('草稿未提及原专业背景——你填写了教育背景但叙事中未利用，建议说明原专业如何影响你的转向决定');
       score -= 10;
-    }
-
-    if (!mentionsProjects && !draftLower.includes('项目') && !draftLower.includes('作品') && !draftLower.includes('实践')) {
-      feedback.push('申请叙事未提及具体项目，建议引用作品集中的项目作为能力证据');
+    } else if (!hasEdu && !draftMentionsEdu) {
+      feedback.push('草稿未提及原专业背景——建议在个人背景中补充教育信息，并在叙事中说明原专业如何塑造了你');
       score -= 10;
+    } else if (hasEdu && draftMentionsEdu) {
+      score += 5;
+      feedback.push('叙事中有效利用了教育背景信息');
     }
 
-    if (targetMajor) {
-      const mentionsTarget = draftLower.includes(targetMajor.school.toLowerCase()) || draftLower.includes(targetMajor.major.toLowerCase());
-      if (!mentionsTarget && !draftLower.includes('目标') && !draftLower.includes('申请') && !draftLower.includes('深造')) {
-        feedback.push('申请叙事未提及目标院校或专业，建议明确表达申请意向');
-        score -= 10;
-      } else if (mentionsTarget) {
-        score += 5;
-        feedback.push('叙事中明确提及了目标专业，方向清晰');
-      }
+    if (hasExp && !draftMentionsExp) {
+      feedback.push('草稿未引用相关经历——你填写了经历但叙事中未体现，建议将具体经历作为转向的证据');
+      score -= 8;
     }
 
-    const hasTurningPoint = draftLower.includes('转') || draftLower.includes('决定') || draftLower.includes('触发') || draftLower.includes('改变') || draftLower.includes('意识') || draftLower.includes('发现');
+    const referencedProjects = projects.filter((p) => p.title && p.title.trim().length > 0 && draftLower.includes(p.title.toLowerCase()));
+    const hasProjectKeyword = draftLower.includes('项目') || draftLower.includes('作品') || draftLower.includes('实践') || draftLower.includes('课题') || draftLower.includes('研究');
+
+    if (projects.length > 0 && referencedProjects.length === 0 && !hasProjectKeyword) {
+      feedback.push('草稿未引用任何项目证据——建议至少提及1-2个核心项目名称，用项目成果佐证你的能力');
+      score -= 12;
+    } else if (referencedProjects.length > 0 && referencedProjects.length < projects.length) {
+      score += 5;
+      feedback.push(`叙事引用了${referencedProjects.length}个项目，但还有${projects.length - referencedProjects.length}个项目未被提及，可考虑补充`);
+    } else if (referencedProjects.length === projects.length && projects.length > 0) {
+      score += 10;
+      feedback.push('叙事引用了所有项目，证据链完整');
+    } else if (hasProjectKeyword && referencedProjects.length === 0) {
+      score += 2;
+      feedback.push('叙事泛泛提及了项目，但未引用具体项目名称——点出项目名会更有说服力');
+    }
+
+    const turningPointWords = ['转', '决定', '触发', '改变', '意识', '发现', '启发', '触动', '转向', '决心', '转变'];
+    const hasTurningPoint = turningPointWords.some(w => draftLower.includes(w));
     if (hasTurningPoint) {
       score += 5;
       feedback.push('叙事中有明确的转折点，展现了转向的内在驱动力');
     } else {
-      feedback.push('建议在叙事中明确描述触发转专业决定的关键时刻');
-      score -= 5;
+      feedback.push('草稿未点出转向原因——建议明确描述是什么触发了你转专业的决定，让招生官理解你的动机');
+      score -= 10;
+    }
+
+    if (targetMajor) {
+      const mentionsSchool = draftLower.includes(targetMajor.school.toLowerCase());
+      const mentionsMajor = draftLower.includes(targetMajor.major.toLowerCase());
+      const mentionsTargetKeyword = draftLower.includes('目标') || draftLower.includes('申请') || draftLower.includes('深造') || draftLower.includes('攻读');
+
+      if (mentionsSchool || mentionsMajor) {
+        score += 5;
+        feedback.push('叙事中明确提及了目标院校或专业，方向清晰');
+      } else if (mentionsTargetKeyword) {
+        score += 2;
+        feedback.push('叙事提及了申请意向，但未具体指出目标院校或专业名称——明确写出更有针对性');
+      } else {
+        feedback.push('草稿未提及目标专业——建议明确表达你申请的是什么专业、为什么选择这个方向');
+        score -= 10;
+      }
+    }
+
+    if (hasSkills) {
+      const mentionedSkills = background!.skills.filter(s => draftLower.includes(s.toLowerCase()));
+      if (mentionedSkills.length > 0) {
+        score += 3;
+        feedback.push(`叙事中提及了${mentionedSkills.join('、')}等已有技能`);
+      } else if (background!.skills.length > 0) {
+        feedback.push('你填写的技能在叙事中未被利用——建议将关键技能作为你胜任目标专业的佐证');
+        score -= 5;
+      }
     }
   } else {
     feedback.push('尚未填写申请叙事草稿，建议在创建页补充，以评估故事是否讲得通');
